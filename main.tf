@@ -68,7 +68,7 @@ resource "aws_security_group" "web_sg" {
   }
 
   tags = {
-    Name = "web-datasource-sg"
+    Name = "web-datasource-sg-2"
   }
 }
 
