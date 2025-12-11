@@ -27,7 +27,7 @@ data "aws_ami" "amazon_linux" {
 
 # 4. Security Group para la EC2
 resource "aws_security_group" "web_sg" {
-  name        = "web-datasource-sg"
+  name        = "web-datasource-sg-2"
   description = "Allow SSH, HTTP and HTTPS"
   vpc_id      = data.aws_vpc.selected.id
 
