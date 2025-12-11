@@ -2,10 +2,9 @@
 data "aws_vpc" "selected" {
   filter {
     name   = "tag:Name"
-    values = ["main-vpc"] # <--- ESTE es el valor real del tag Name
+    values = ["luis-vcp-vpc"]
   }
 }
-
 # 2. Obtener subnets de esa VPC
 data "aws_subnets" "selected" {
   filter {
