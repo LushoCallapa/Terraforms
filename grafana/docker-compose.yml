@@ -1,0 +1,90 @@
+version: '3.8'
+
+networks:
+  monitoring:
+    driver: bridge
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    labels:
+      logging: "promtail"
+      service: "prometheus"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alert.yml:/etc/prometheus/alert.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: grafana
+    labels:
+      logging: "promtail"
+      service: "grafana"
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    depends_on:
+      - loki
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - monitoring
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    labels:
+      logging: "promtail"
+      service: "node-exporter"
+    ports:
+      - "9100:9100"
+    networks:
+      - monitoring
+
+  python-app:
+    build: ./python-app
+    container_name: python-app
+    labels:
+      logging: "promtail"
+      service: "python-app"
+    ports:
+      - "8000:8000"
+    networks:
+      - monitoring
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    user: "0:0"
+    networks:
+      - monitoring
+
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: promtail
+    command: -config.file=/etc/promtail/config.yaml
+    volumes:
+      - //var/run/docker.sock:/var/run/docker.sock:ro
+      - ./promtail-config.yaml:/etc/promtail/config.yaml:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+volumes:
+  grafana-data:
+  loki-data:
