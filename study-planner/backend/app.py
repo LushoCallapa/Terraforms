@@ -14,7 +14,7 @@ def chat():
     payload = request.get_json(silent=True) or {}
     user_message = payload.get('message', '').strip()
     if not user_message:
-        return jsonify({'error': 'No message provided'}), 400
+        return jsonify({'error': 'No message provided 400'}), 400
 
     try:
         response_text = client.generate_response(user_message)
