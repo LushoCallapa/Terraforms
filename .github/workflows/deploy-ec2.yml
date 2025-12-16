@@ -13,7 +13,7 @@ jobs:
   # 1️⃣ SETUP DOCKER EN EC2
   # ===============================
   setup-docker:
-    name: Setup Docker on EC2
+    name: Setup Docker on EC2 1
     runs-on: ubuntu-latest
 
     steps:
