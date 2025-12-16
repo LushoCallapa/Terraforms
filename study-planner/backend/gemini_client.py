@@ -44,63 +44,106 @@ def perform_web_search(query: str, max_results: int = 6) -> List[Dict[str, str]]
 class GeminiClient:
     def __init__(self):
         try:
-            # Configurar API Key explícitamente
             genai.configure(api_key=API_KEY)
 
-            # Usar modelo válido
             self.model = genai.GenerativeModel("models/gemini-2.5-flash-lite")
+
+            # Historial de conversación
             self.chat = self.model.start_chat(history=[])
-            print("GeminiClient inicializado correctamente.")
+
+            # Estado del agente de viajes
+            self.state = {
+                "destination": None,
+                "budget": None,
+                "dates": None,
+                "travelers": None,
+                "interests": None,
+            }
+
+            print("✈️ Travel Agent AI inicializado correctamente.")
+
         except Exception as e:
             print(f"Error configuring Gemini API: {e}")
             self.chat = None
 
-    def generate_response(self, user_input: str) -> str:
-        if not self.chat:
-            return "AI service is not configured correctly."
+    # -----------------------------
+    # Detectar info clave del usuario
+    # -----------------------------
+    def _update_state_from_input(self, text: str):
+        """
+        Usa Gemini para extraer información estructurada del mensaje del usuario
+        y actualizar el estado del agente.
+        """
+        extraction_prompt = f"""
+        Extract travel-related information from the message below.
+        Return ONLY valid JSON with these keys (null if missing):
+        - destination
+        - budget
+        - dates
+        - travelers
+        - interests
+
+        Message:
+        "{text}"
+        """
 
         try:
-            text = user_input or ""
-            lower = text.strip().lower()
+            result = self.model.generate_content(extraction_prompt)
+            data = eval(result.text) if result.text else {}
+            if isinstance(data, dict):
+                for k in self.state:
+                    if data.get(k):
+                        self.state[k] = data[k]
+        except Exception:
+            pass  # extracción best-effort
 
-            # Buscar si el input requiere búsqueda web
-            search_query = None
-            if lower.startswith("search:"):
-                search_query = text.split(":", 1)[1].strip()
-            elif lower.startswith("/search "):
-                search_query = text.split(" ", 1)[1].strip()
+    # -----------------------------
+    # Ver qué falta preguntar
+    # -----------------------------
+    def _missing_fields(self):
+        return [k for k, v in self.state.items() if not v]
 
-            if search_query:
-                web_results = perform_web_search(search_query, max_results=6)
-                if not web_results:
-                    return "I could not retrieve web results right now. Please try again."
+    # -----------------------------
+    # Respuesta principal
+    # -----------------------------
+    def generate_response(self, user_input: str) -> str:
+        if not self.chat:
+            return "Travel service is not configured correctly."
 
-                # Crear referencias numeradas
-                refs_lines = [
-                    f"[{idx}] {item['title']} — {item['href']}\n{item['body']}"
-                    for idx, item in enumerate(web_results, start=1)
-                ]
-                refs_block = "\n\n".join(refs_lines)
+        # Actualizar estado con el input del usuario
+        self._update_state_from_input(user_input)
 
-                system_prompt = (
-                    "You are an AI research assistant. Use the provided web search results "
-                    "to answer the user query. Synthesize concisely, cite sources inline like [1], [2] where relevant, "
-                    "and include a brief summary."
-                )
+        missing = self._missing_fields()
 
-                composed = (
-                    f"<system>\n{system_prompt}\n</system>\n"
-                    f"<user_query>\n{search_query}\n</user_query>\n"
-                    f"<web_results>\n{refs_block}\n</web_results>"
-                )
-
-                response = self.chat.send_message(composed)
-                return response.text
-
-            # Chat normal
-            response = self.chat.send_message(text)
+        # 1️⃣ Si falta información → preguntar
+        if missing:
+            next_question_prompt = f"""
+            You are a friendly AI travel agent.
+            Ask ONE clear and concise question to collect the next missing detail.
+            Missing details: {", ".join(missing)}.
+            Do not ask multiple questions at once.
+            """
+            response = self.chat.send_message(next_question_prompt)
             return response.text
 
-        except Exception as e:
-            print(f"Error generating response: {e}")
-            return "I'm sorry, I encountered an error processing your request."
+        # 2️⃣ Si ya tenemos todo → planificar viaje
+        planning_prompt = f"""
+        You are an expert travel agency.
+
+        Trip details:
+        Destination: {self.state['destination']}
+        Budget: {self.state['budget']}
+        Dates: {self.state['dates']}
+        Travelers: {self.state['travelers']}
+        Interests: {self.state['interests']}
+
+        Tasks:
+        - Analyze the destination
+        - Propose a realistic itinerary
+        - Suggest accommodations and activities within budget
+        - Give travel tips and best areas to stay
+        - Present the plan in a clear structure
+        """
+
+        response = self.chat.send_message(planning_prompt)
+        return response.text
