@@ -1,0 +1,90 @@
+name: Setup & Deploy Study Planner to EC2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "study-planner/**"
+      - ".github/workflows/deploy-study-planner.yml"
+
+jobs:
+  # ===============================
+  # 1️⃣ SETUP DOCKER EN EC2
+  # ===============================
+  setup-docker:
+    name: Setup Docker on EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install Docker & Docker Compose
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+
+            echo "🔍 Checking Docker..."
+
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "🐳 Installing Docker"
+              sudo apt update
+              sudo apt install -y docker.io
+              sudo systemctl enable docker
+              sudo systemctl start docker
+            else
+              echo "✅ Docker already installed"
+            fi
+
+            if ! command -v docker-compose >/dev/null 2>&1; then
+              echo "📦 Installing Docker Compose"
+              sudo apt install -y docker-compose
+            else
+              echo "✅ Docker Compose already installed"
+            fi
+
+            echo "👤 Adding user to docker group"
+            sudo usermod -aG docker $USER
+
+            echo "✅ Docker setup finished"
+
+  # ===============================
+  # 2️⃣ COPY + DEPLOY (SOLO SI 1️⃣ OK)
+  # ===============================
+  deploy:
+    name: Copy & Deploy Study Planner
+    runs-on: ubuntu-latest
+    needs: setup-docker   # 🔒 BLOQUEO CLAVE
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Copy study-planner to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "study-planner"
+          target: ${{ secrets.EC2_TARGET_DIR }}
+
+      - name: Run Docker Compose on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+
+            echo "🚀 Deploying Study Planner"
+
+            cd ${{ secrets.EC2_TARGET_DIR }}/study-planner
+
+            docker-compose down || true
+            docker-compose up --build -d
+
+            echo "✅ Deployment completed"
